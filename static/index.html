@@ -25,13 +25,14 @@
         button { width: 100%; padding: 14px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 15px; transition: background 0.3s; }
         button:hover { background: #4338ca; }
         .error { color: #dc3545; font-size: 14px; text-align: center; margin-top: 10px; }
+        #balance-display { text-align: center; font-weight: bold; color: #4f46e5; margin-bottom: 20px; font-size: 18px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div id="login-section">
-        <h2> Hoş Geldin</h2>
+        <h2>👋 Hoş Geldin</h2>
         <input type="text" id="email" placeholder="E-posta">
         <input type="password" id="password" placeholder="Şifre">
         <button onclick="handleLogin()">Giriş Yap</button>
@@ -40,6 +41,7 @@
 
     <div id="survey-section">
         <h2 id="welcome-msg"></h2>
+        <div id="balance-display"></div> 
         <div id="survey-container">
             <p>Sorular yükleniyor...</p>
         </div>
@@ -83,7 +85,10 @@
                 // Ekranları değiştir
                 document.getElementById('login-section').style.display = 'none';
                 document.getElementById('survey-section').style.display = 'block';
-                document.getElementById('welcome-msg').innerText = `📊 Selam ${email}, Soruları Yanıtla!`;
+                document.getElementById('welcome-msg').innerText = `📊 Selam ${email}`;
+                
+                // BAKİYEYİ EKRANA YAZDIR
+                document.getElementById('balance-display').innerText = `Mevcut Bakiyeniz: ${data.tokens} Token`;
                 
                 // GİRİŞ BAŞARILIYSA SORULARI ŞİMDİ ÇEK
                 fetchQuestions(); 
@@ -159,6 +164,7 @@
                     <h2 style="color: #4f46e5;">✅ İşlem Tamam!</h2>
                     <p style="font-size: 18px;">${result.message}</p>
                     <p>Tokenlarını cüzdanında görebilirsin.</p>
+                    <button onclick="location.reload()" style="background:#22c55e;">Geri Dön ve Bakiyeni Gör</button>
                 </div>
             `;
         } else {
@@ -168,4 +174,4 @@
 </script>
 
 </body>
-</html> 
+</html>
