@@ -1,10 +1,11 @@
 FROM golang:1.21-alpine AS builder
 WORKDIR /app
-# Önce mod dosyalarını kopyalayıp paketleri indiriyoruz
-COPY go.mod go.sum ./
-RUN go mod download
-# Sonra kodun geri kalanını kopyalıyoruz
+
+# Paket listesini kopyala
+COPY go.mod ./
+# go.sum hatasını bypass etmek ve eksikleri çekmek için tidy çalıştırıyoruz
 COPY . .
+RUN go mod tidy
 RUN go build -o main .
 
 FROM alpine:latest
