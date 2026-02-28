@@ -2,14 +2,27 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
-	"os" // Port için gerekli
+	"os"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/jackc/pgx/v4"
 )
+
+// --- MODELLER ---
+type Option struct {
+	ID   int    `json:"id"`
+	Text string `json:"text"`
+}
+
+type Question struct {
+	ID      int      `json:"id"`
+	Text    string   `json:"text"`
+	Options []Option `json:"options"`
+}
 
 func main() {
 	// 1. NEON DB BAĞLANTISI
@@ -19,7 +32,6 @@ func main() {
 		log.Fatal("❌ Veritabanına bağlanılamadı: ", err)
 	}
 	defer db.Close(context.Background())
-
 	fmt.Println("✅ Neon DB Bağlantısı Başarılı!")
 
 	app := fiber.New()
@@ -31,12 +43,10 @@ func main() {
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
-	// --- KRİTİK EKLEME: FRONTEND DOSYALARI ---
-	// "static" klasöründeki dosyaları ana dizinde sunar
+	// 3. FRONTEND DOSYALARI (out klasöründen kopyalayıp static'e attıkların)
 	app.Static("/", "./static")
-	// ----------------------------------------
 
-	// 3. GİRİŞ (LOGIN) ROTASI
+	// 4. GİRİŞ (LOGIN)
 	app.Post("/login", func(c *fiber.Ctx) error {
 		type LoginRequest struct {
 			Email    string `json:"email"`
@@ -46,77 +56,89 @@ func main() {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Geçersiz istek"})
 		}
-
 		var dbPassword string
 		err := db.QueryRow(context.Background(), "SELECT password FROM users WHERE email=$1", req.Email).Scan(&dbPassword)
-
 		if err != nil || dbPassword != req.Password {
 			return c.Status(401).JSON(fiber.Map{"error": "E-posta veya şifre hatalı!"})
 		}
-
 		return c.JSON(fiber.Map{"token": "gizli-anahtar-123", "success": true})
 	})
 
-	// 4. SORULARI GETİRME ROTASI
+	// 5. SORULARI VE ŞIKLARI GETİR
 	app.Get("/questions", func(c *fiber.Ctx) error {
-		rows, err := db.Query(context.Background(), "SELECT id, text FROM questions")
+		query := `
+			SELECT q.id, q.text, 
+			       json_agg(json_build_object('id', o.id, 'text', o.option_text) ORDER BY o.id) as options
+			FROM questions q
+			LEFT JOIN options o ON q.id = o.question_id
+			GROUP BY q.id, q.text
+			ORDER BY q.id
+		`
+		rows, err := db.Query(context.Background(), query)
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Sorular çekilemedi"})
+			return c.Status(500).JSON(fiber.Map{"error": "Veriler çekilemedi"})
 		}
 		defer rows.Close()
 
-		var questions []fiber.Map
+		var questions []Question
 		for rows.Next() {
-			var id int
-			var text string
-			if err := rows.Scan(&id, &text); err == nil {
-				questions = append(questions, fiber.Map{"id": id, "text": text})
+			var q Question
+			var optionsJSON []byte
+			if err := rows.Scan(&q.ID, &q.Text, &optionsJSON); err != nil {
+				continue
 			}
-		}
-
-		if len(questions) == 0 {
-			return c.JSON([]fiber.Map{{"id": 1, "text": "Henüz anket sorusu yok!"}})
+			json.Unmarshal(optionsJSON, &q.Options)
+			questions = append(questions, q)
 		}
 		return c.JSON(questions)
 	})
 
-	// 5. ANKET BİTİRME VE TOKEN KAZANMA ROTASI
+	// 6. ANKETİ BİTİR, CEVAPLARI KAYDET VE TOKEN VER
 	app.Post("/finish-survey", func(c *fiber.Ctx) error {
+		type AnswerReq struct {
+			QuestionID int `json:"question_id"`
+			OptionID   int `json:"option_id"`
+		}
 		type FinishRequest struct {
-			Email string `json:"email"`
+			Email   string      `json:"email"`
+			Answers []AnswerReq `json:"answers"`
 		}
 		var req FinishRequest
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Hata"})
 		}
 
-		_, err := db.Exec(context.Background(), "UPDATE users SET tokens = tokens + 10 WHERE email = $1", req.Email)
+		// Kullanıcıyı bul
+		var userID int
+		err := db.QueryRow(context.Background(), "SELECT id FROM users WHERE email=$1", req.Email).Scan(&userID)
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Güncellenemedi"})
+			return c.Status(404).JSON(fiber.Map{"error": "Kullanıcı yok"})
 		}
 
-		var totalTokens int
-		db.QueryRow(context.Background(), "SELECT tokens FROM users WHERE email=$1", req.Email).Scan(&totalTokens)
+		// Cevapları döngüyle kaydet
+		for _, ans := range req.Answers {
+			_, _ = db.Exec(context.Background(),
+				"INSERT INTO answers (user_id, question_id, option_id) VALUES ($1, $2, $3)",
+				userID, ans.QuestionID, ans.OptionID)
+		}
 
-		return c.JSON(fiber.Map{
-			"success":      true,
-			"total_tokens": totalTokens,
-		})
+		// Token artır
+		_, _ = db.Exec(context.Background(), "UPDATE users SET tokens = tokens + 10 WHERE id = $1", userID)
+
+		return c.JSON(fiber.Map{"success": true, "message": "Anket kaydedildi, 10 token yüklendi!"})
 	})
 
-	// --- KRİTİK EKLEME: SAYFA YENİLEME DESTEĞİ ---
-	// Kullanıcı Fly.io linkinde dolaşırken 404 almasın diye
+	// 7. SAYFA YENİLEME DESTEĞİ (SPA)
 	app.Get("/*", func(c *fiber.Ctx) error {
 		return c.SendFile("./static/index.html")
 	})
-	// ---------------------------------------------
 
-	// PORT AYARI (Fly.io için dinamik port)
+	// PORT AYARI
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	fmt.Printf("🚀 Backend %s portunda ateşlendi!\n", port)
+	fmt.Printf("🚀 Sistem %s portunda aktif!\n", port)
 	log.Fatal(app.Listen(":" + port))
 }
