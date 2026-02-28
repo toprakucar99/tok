@@ -9,12 +9,12 @@
         .container { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
         h2 { color: #1a1a1a; text-align: center; margin-bottom: 20px; }
         
-        /* Login Formu */
-        #login-section { display: block; }
+        /* Bölüm Kontrolleri */
+        #login-section { display: block; } /* Başlangıçta açık */
+        #survey-section { display: none; }  /* Başlangıçta kesin kapalı */
+        
         input[type="text"], input[type="password"] { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
         
-        /* Anket Kısmı */
-        #survey-section { display: none; }
         .question-card { margin-bottom: 20px; padding: 15px; border-bottom: 1px solid #eee; }
         .question-text { font-weight: 600; color: #333; margin-bottom: 12px; display: block; }
         .option-group { display: flex; flex-direction: column; gap: 10px; }
@@ -52,6 +52,12 @@
     let currentEmail = "";
     let questionsData = [];
 
+    // Sayfa yüklendiğinde ne olur ne olmaz anket kısmını sakla
+    document.addEventListener("DOMContentLoaded", () => {
+        document.getElementById('login-section').style.display = 'block';
+        document.getElementById('survey-section').style.display = 'none';
+    });
+
     // 1. GİRİŞ YAPMA FONKSİYONU
     async function handleLogin() {
         const email = document.getElementById('email').value;
@@ -63,48 +69,59 @@
             return;
         }
 
-        const res = await fetch('/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email, password: password })
-        });
+        try {
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, password: password })
+            });
 
-        const data = await res.json();
+            const data = await res.json();
 
-        if (data.success) {
-            currentEmail = email;
-            document.getElementById('login-section').style.display = 'none';
-            document.getElementById('survey-section').style.display = 'block';
-            document.getElementById('welcome-msg').innerText = `📊 Selam ${email}, Soruları Yanıtla!`;
-            fetchQuestions(); // Giriş başarılıysa soruları getir
-        } else {
-            errorDiv.innerText = "Giriş başarısız! E-posta veya şifre yanlış.";
+            if (data.success) {
+                currentEmail = email;
+                // Ekranları değiştir
+                document.getElementById('login-section').style.display = 'none';
+                document.getElementById('survey-section').style.display = 'block';
+                document.getElementById('welcome-msg').innerText = `📊 Selam ${email}, Soruları Yanıtla!`;
+                
+                // GİRİŞ BAŞARILIYSA SORULARI ŞİMDİ ÇEK
+                fetchQuestions(); 
+            } else {
+                errorDiv.innerText = "Giriş başarısız! E-posta veya şifre yanlış.";
+            }
+        } catch (err) {
+            errorDiv.innerText = "Sunucuya bağlanılamadı kanka!";
         }
     }
 
     // 2. SORULARI ÇEKME FONKSİYONU
     async function fetchQuestions() {
-        const res = await fetch('/questions');
-        questionsData = await res.json();
-        
-        const container = document.getElementById('survey-container');
-        container.innerHTML = '';
+        try {
+            const res = await fetch('/questions');
+            questionsData = await res.json();
+            
+            const container = document.getElementById('survey-container');
+            container.innerHTML = '';
 
-        questionsData.forEach(q => {
-            let optionsHTML = q.options.map(opt => `
-                <label class="option-item">
-                    <input type="radio" name="q${q.id}" value="${opt.id}">
-                    ${opt.text}
-                </label>
-            `).join('');
+            questionsData.forEach(q => {
+                let optionsHTML = q.options.map(opt => `
+                    <label class="option-item">
+                        <input type="radio" name="q${q.id}" value="${opt.id}">
+                        ${opt.text}
+                    </label>
+                `).join('');
 
-            container.innerHTML += `
-                <div class="question-card">
-                    <span class="question-text">${q.text}</span>
-                    <div class="option-group">${optionsHTML}</div>
-                </div>
-            `;
-        });
+                container.innerHTML += `
+                    <div class="question-card">
+                        <span class="question-text">${q.text}</span>
+                        <div class="option-group">${optionsHTML}</div>
+                    </div>
+                `;
+            });
+        } catch (err) {
+            document.getElementById('survey-container').innerHTML = "Sorular yüklenirken hata oluştu.";
+        }
     }
 
     // 3. CEVAPLARI GÖNDERME FONKSİYONU
