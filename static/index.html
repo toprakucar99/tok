@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tok Anket - Giriş ve Katıl</title>
+    <title>Tok Bilgi Yarışması - Çöz & Kazan</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .container { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
         h2 { color: #1a1a1a; text-align: center; margin-bottom: 20px; }
         
-        /* Bölüm Kontrolleri */
-        #login-section { display: block; } /* Başlangıçta açık */
-        #survey-section { display: none; }  /* Başlangıçta kesin kapalı */
+        #login-section { display: block; } 
+        #survey-section { display: none; }  
         
         input[type="text"], input[type="password"] { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
         
@@ -25,7 +24,12 @@
         button { width: 100%; padding: 14px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 15px; transition: background 0.3s; }
         button:hover { background: #4338ca; }
         .error { color: #dc3545; font-size: 14px; text-align: center; margin-top: 10px; }
-        #balance-display { text-align: center; font-weight: bold; color: #4f46e5; margin-bottom: 20px; font-size: 18px; }
+        #balance-display { text-align: center; font-weight: bold; color: #4f46e5; margin-bottom: 20px; font-size: 18px; background: #eef2ff; padding: 10px; border-radius: 8px; }
+        
+        /* Sonuç Ekranı Stili */
+        .result-box { text-align: center; padding: 20px; }
+        .result-score { font-size: 48px; font-weight: bold; color: #4f46e5; margin: 10px 0; }
+        .token-badge { display: inline-block; background: #fbbf24; color: #92400e; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -45,7 +49,7 @@
         <div id="survey-container">
             <p>Sorular yükleniyor...</p>
         </div>
-        <button onclick="submitSurvey()">Anketi Bitir & 10 Token Al</button>
+        <button id="submit-btn" onclick="submitSurvey()">Yarışmayı Bitir & Token Kazan</button>
         <div id="survey-error" class="error"></div>
     </div>
 </div>
@@ -54,13 +58,6 @@
     let currentEmail = "";
     let questionsData = [];
 
-    // Sayfa yüklendiğinde ne olur ne olmaz anket kısmını sakla
-    document.addEventListener("DOMContentLoaded", () => {
-        document.getElementById('login-section').style.display = 'block';
-        document.getElementById('survey-section').style.display = 'none';
-    });
-
-    // 1. GİRİŞ YAPMA FONKSİYONU
     async function handleLogin() {
         const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
@@ -82,25 +79,19 @@
 
             if (data.success) {
                 currentEmail = email;
-                // Ekranları değiştir
                 document.getElementById('login-section').style.display = 'none';
                 document.getElementById('survey-section').style.display = 'block';
-                document.getElementById('welcome-msg').innerText = `📊 Selam ${email}`;
-                
-                // BAKİYEYİ EKRANA YAZDIR
-                document.getElementById('balance-display').innerText = `Mevcut Bakiyeniz: ${data.tokens} Token`;
-                
-                // GİRİŞ BAŞARILIYSA SORULARI ŞİMDİ ÇEK
+                document.getElementById('welcome-msg').innerText = `🧠 Başarılar ${email}`;
+                document.getElementById('balance-display').innerText = `💰 Mevcut Bakiyen: ${data.tokens} Token`;
                 fetchQuestions(); 
             } else {
-                errorDiv.innerText = "Giriş başarısız! E-posta veya şifre yanlış.";
+                errorDiv.innerText = "Giriş başarısız! Bilgilerini kontrol et.";
             }
         } catch (err) {
-            errorDiv.innerText = "Sunucuya bağlanılamadı kanka!";
+            errorDiv.innerText = "Sunucuya bağlanılamadı!";
         }
     }
 
-    // 2. SORULARI ÇEKME FONKSİYONU
     async function fetchQuestions() {
         try {
             const res = await fetch('/questions');
@@ -125,11 +116,10 @@
                 `;
             });
         } catch (err) {
-            document.getElementById('survey-container').innerHTML = "Sorular yüklenirken hata oluştu.";
+            container.innerHTML = "Sorular yüklenirken hata oluştu.";
         }
     }
 
-    // 3. CEVAPLARI GÖNDERME FONKSİYONU
     async function submitSurvey() {
         const answers = [];
         let allAnswered = true;
@@ -137,38 +127,45 @@
         questionsData.forEach(q => {
             const selected = document.querySelector(`input[name="q${q.id}"]:checked`);
             if (selected) {
-                answers.push({
-                    question_id: q.id,
-                    option_id: parseInt(selected.value)
-                });
+                answers.push({ question_id: q.id, option_id: parseInt(selected.value) });
             } else {
                 allAnswered = false;
             }
         });
 
         if (!allAnswered) {
-            alert("Boş soru bırakma kanka, hepsi önemli!");
+            alert("Tüm soruları cevaplamalısın kanka!");
             return;
         }
 
-        const res = await fetch('/finish-survey', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: currentEmail, answers: answers })
-        });
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.innerText = "Kontrol ediliyor...";
 
-        const result = await res.json();
-        if (result.success) {
-            document.getElementById('survey-section').innerHTML = `
-                <div style="text-align:center;">
-                    <h2 style="color: #4f46e5;">✅ İşlem Tamam!</h2>
-                    <p style="font-size: 18px;">${result.message}</p>
-                    <p>Tokenlarını cüzdanında görebilirsin.</p>
-                    <button onclick="location.reload()" style="background:#22c55e;">Geri Dön ve Bakiyeni Gör</button>
-                </div>
-            `;
-        } else {
-            document.getElementById('survey-error').innerText = "Cevaplar kaydedilemedi, tekrar dene!";
+        try {
+            const res = await fetch('/finish-survey', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: currentEmail, answers: answers })
+            });
+
+            const result = await res.json();
+            if (result.success) {
+                document.getElementById('survey-section').innerHTML = `
+                    <div class="result-box">
+                        <h2 style="color: #4f46e5;">🏁 Yarışma Bitti!</h2>
+                        <div class="result-score">${result.correct_count} / ${questionsData.length}</div>
+                        <p>Doğru Cevap Sayısı</p>
+                        <div class="token-badge">+${result.earned_tokens} Token Kazandın!</div>
+                        <p style="color: #666; font-size: 14px;">${result.message}</p>
+                        <button onclick="location.reload()" style="background:#22c55e;">Harika! Geri Dön</button>
+                    </div>
+                `;
+            }
+        } catch (err) {
+            alert("Bir hata oluştu kanka!");
+            btn.disabled = false;
+            btn.innerText = "Anketi Bitir & Token Kazan";
         }
     }
 </script>

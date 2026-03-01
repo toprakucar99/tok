@@ -85,7 +85,7 @@ func main() {
 		return c.JSON(questions)
 	})
 
-	// 5. ANKETİ BİTİR VE CEVAPLARI KAYDET
+	// 5. YARIŞMAYI BİTİR - DOĞRU CEVAP KONTROLLÜ TOKEN DAĞITIMI
 	app.Post("/finish-survey", func(c *fiber.Ctx) error {
 		var req FinishRequest
 		if err := c.BodyParser(&req); err != nil {
@@ -98,25 +98,44 @@ func main() {
 			return c.Status(404).JSON(fiber.Map{"error": "Kullanıcı bulunamadı"})
 		}
 
+		correctCount := 0
+		tokenPerCorrect := 10 // Her doğru cevap başına verilecek token
+
 		for _, ans := range req.Answers {
+			// Önce cevabı DB'ye kaydet (Analiz için)
 			_, _ = db.Exec(context.Background(),
 				"INSERT INTO answers (user_id, question_id, option_id) VALUES ($1, $2, $3)",
 				userID, ans.QuestionID, ans.OptionID)
+
+			// Şık doğru mu kontrol et?
+			var isCorrect bool
+			err := db.QueryRow(context.Background(), "SELECT is_correct FROM options WHERE id=$1", ans.OptionID).Scan(&isCorrect)
+
+			if err == nil && isCorrect {
+				correctCount++
+			}
 		}
 
-		// Kullanıcıya 10 Token ödül ver
-		_, err = db.Exec(context.Background(), "UPDATE users SET tokens = tokens + 10 WHERE id = $1", userID)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Token güncellenemedi"})
+		// Toplam kazanılan token'ı hesapla
+		totalEarned := correctCount * tokenPerCorrect
+
+		// Kullanıcının token'larını güncelle
+		if totalEarned > 0 {
+			_, err = db.Exec(context.Background(), "UPDATE users SET tokens = tokens + $1 WHERE id = $2", totalEarned, userID)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "Token güncellenemedi"})
+			}
 		}
 
 		return c.JSON(fiber.Map{
-			"success": true,
-			"message": "10 Token hesabınıza tanımlandı!",
+			"success":       true,
+			"correct_count": correctCount,
+			"earned_tokens": totalEarned,
+			"message":       fmt.Sprintf("%d doğru yaptınız ve %d Token kazandınız!", correctCount, totalEarned),
 		})
 	})
 
-	// 6. GİRİŞ (LOGIN) - Bakiye Destekli
+	// 6. GİRİŞ (LOGIN)
 	app.Post("/login", func(c *fiber.Ctx) error {
 		type LoginReq struct {
 			Email    string `json:"email"`
@@ -129,14 +148,12 @@ func main() {
 
 		var dbPass string
 		var currentTokens int
-		// Hem şifreyi hem de mevcut bakiyeyi çekiyoruz
 		err := db.QueryRow(context.Background(), "SELECT password, tokens FROM users WHERE email=$1", req.Email).Scan(&dbPass, &currentTokens)
 
 		if err != nil || dbPass != req.Password {
 			return c.Status(401).JSON(fiber.Map{"success": false, "error": "Hatalı giriş bilgileri"})
 		}
 
-		// Giriş başarılıysa hem success döner hem de bakiyeyi gönderir
 		return c.JSON(fiber.Map{
 			"success": true,
 			"tokens":  currentTokens,
