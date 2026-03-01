@@ -26,10 +26,16 @@
         .error { color: #dc3545; font-size: 14px; text-align: center; margin-top: 10px; }
         #balance-display { text-align: center; font-weight: bold; color: #4f46e5; margin-bottom: 20px; font-size: 18px; background: #eef2ff; padding: 10px; border-radius: 8px; }
         
-        /* Sonuç Ekranı Stili */
-        .result-box { text-align: center; padding: 20px; }
-        .result-score { font-size: 48px; font-weight: bold; color: #4f46e5; margin: 10px 0; }
-        .token-badge { display: inline-block; background: #fbbf24; color: #92400e; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-bottom: 15px; }
+        /* Analiz Listesi Stilleri */
+        .result-box { text-align: center; }
+        .result-score { font-size: 40px; font-weight: bold; color: #4f46e5; margin: 10px 0; }
+        .token-badge { display: inline-block; background: #fbbf24; color: #92400e; padding: 8px 20px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; }
+        .analysis-container { margin-top: 20px; text-align: left; max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 10px; padding: 10px; }
+        .analysis-item { padding: 10px; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+        .analysis-item:last-child { border-bottom: none; }
+        .status-correct { color: #16a34a; font-weight: bold; }
+        .status-wrong { color: #dc2626; font-weight: bold; }
+        .correct-answer-text { color: #2563eb; display: block; margin-top: 4px; font-style: italic; }
     </style>
 </head>
 <body>
@@ -74,7 +80,6 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: email, password: password })
             });
-
             const data = await res.json();
 
             if (data.success) {
@@ -82,42 +87,30 @@
                 document.getElementById('login-section').style.display = 'none';
                 document.getElementById('survey-section').style.display = 'block';
                 document.getElementById('welcome-msg').innerText = `🧠 Başarılar ${email}`;
-                document.getElementById('balance-display').innerText = `💰 Mevcut Bakiyen: ${data.tokens} Token`;
+                document.getElementById('balance-display').innerText = `💰 Bakiyen: ${data.tokens} Token`;
                 fetchQuestions(); 
             } else {
-                errorDiv.innerText = "Giriş başarısız! Bilgilerini kontrol et.";
+                errorDiv.innerText = "Giriş başarısız!";
             }
         } catch (err) {
-            errorDiv.innerText = "Sunucuya bağlanılamadı!";
+            errorDiv.innerText = "Sunucu hatası!";
         }
     }
 
     async function fetchQuestions() {
-        try {
-            const res = await fetch('/questions');
-            questionsData = await res.json();
-            
-            const container = document.getElementById('survey-container');
-            container.innerHTML = '';
-
-            questionsData.forEach(q => {
-                let optionsHTML = q.options.map(opt => `
-                    <label class="option-item">
-                        <input type="radio" name="q${q.id}" value="${opt.id}">
-                        ${opt.text}
-                    </label>
-                `).join('');
-
-                container.innerHTML += `
-                    <div class="question-card">
-                        <span class="question-text">${q.text}</span>
-                        <div class="option-group">${optionsHTML}</div>
-                    </div>
-                `;
-            });
-        } catch (err) {
-            container.innerHTML = "Sorular yüklenirken hata oluştu.";
-        }
+        const res = await fetch('/questions');
+        questionsData = await res.json();
+        const container = document.getElementById('survey-container');
+        container.innerHTML = '';
+        questionsData.forEach(q => {
+            let optionsHTML = q.options.map(opt => `
+                <label class="option-item">
+                    <input type="radio" name="q${q.id}" value="${opt.id}">
+                    ${opt.text}
+                </label>
+            `).join('');
+            container.innerHTML += `<div class="question-card"><span class="question-text">${q.text}</span><div class="option-group">${optionsHTML}</div></div>`;
+        });
     }
 
     async function submitSurvey() {
@@ -133,14 +126,11 @@
             }
         });
 
-        if (!allAnswered) {
-            alert("Tüm soruları cevaplamalısın kanka!");
-            return;
-        }
+        if (!allAnswered) { alert("Boş soru bırakma kanka!"); return; }
 
         const btn = document.getElementById('submit-btn');
         btn.disabled = true;
-        btn.innerText = "Kontrol ediliyor...";
+        btn.innerText = "Hesaplanıyor...";
 
         try {
             const res = await fetch('/finish-survey', {
@@ -151,24 +141,37 @@
 
             const result = await res.json();
             if (result.success) {
+                // Analiz Listesini Oluştur
+                let analysisHTML = result.results.map((item, index) => `
+                    <div class="analysis-item">
+                        <strong>Soru ${index + 1}:</strong> 
+                        <span class="${item.is_correct ? 'status-correct' : 'status-wrong'}">
+                            ${item.is_correct ? '✅ Doğru' : '❌ Yanlış'}
+                        </span><br>
+                        <small>Senin Cevabın: ${item.user_option_text}</small>
+                        ${!item.is_correct ? `<span class="correct-answer-text">👉 Doğru Cevap: ${item.correct_option_text}</span>` : ''}
+                    </div>
+                `).join('');
+
                 document.getElementById('survey-section').innerHTML = `
                     <div class="result-box">
-                        <h2 style="color: #4f46e5;">🏁 Yarışma Bitti!</h2>
+                        <h2>🏁 Analiz Raporu</h2>
                         <div class="result-score">${result.correct_count} / ${questionsData.length}</div>
-                        <p>Doğru Cevap Sayısı</p>
                         <div class="token-badge">+${result.earned_tokens} Token Kazandın!</div>
-                        <p style="color: #666; font-size: 14px;">${result.message}</p>
-                        <button onclick="location.reload()" style="background:#22c55e;">Harika! Geri Dön</button>
+                        
+                        <div class="analysis-container">
+                            ${analysisHTML}
+                        </div>
+
+                        <button onclick="location.reload()" style="background:#22c55e; margin-top:20px;">Bakiyeni Gör ve Tekrarla</button>
                     </div>
                 `;
             }
         } catch (err) {
-            alert("Bir hata oluştu kanka!");
+            alert("Hata oluştu!");
             btn.disabled = false;
-            btn.innerText = "Anketi Bitir & Token Kazan";
         }
     }
 </script>
-
 </body>
 </html>
