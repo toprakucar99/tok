@@ -6,9 +6,29 @@
     <title>Tok Bilgi Yarışması - Çöz & Kazan</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 450px; }
+        .container { background: white; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 450px; margin-top: 40px; }
         h2 { color: #1a1a1a; text-align: center; margin-bottom: 20px; }
         
+        /* --- SAĞ ÜST SABİT BAKİYE (NEW) --- */
+        #fixed-balance-box {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4f46e5;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 50px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4);
+            z-index: 9999;
+            display: none; /* Login olunca 'flex' olacak */
+            align-items: center;
+            gap: 8px;
+            border: 2px solid white;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .balance-bump { transform: scale(1.15); }
+
         #login-section { display: block; } 
         #survey-section { display: none; }  
         
@@ -24,7 +44,6 @@
         button { width: 100%; padding: 14px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; margin-top: 15px; transition: background 0.3s; }
         button:hover { background: #4338ca; }
         .error { color: #dc3545; font-size: 14px; text-align: center; margin-top: 10px; }
-        #balance-display { text-align: center; font-weight: bold; color: #4f46e5; margin-bottom: 20px; font-size: 18px; background: #eef2ff; padding: 10px; border-radius: 8px; }
         
         /* Analiz Listesi Stilleri */
         .result-box { text-align: center; }
@@ -32,13 +51,18 @@
         .token-badge { display: inline-block; background: #fbbf24; color: #92400e; padding: 8px 20px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; }
         .analysis-container { margin-top: 20px; text-align: left; max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 10px; padding: 10px; }
         .analysis-item { padding: 10px; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
-        .analysis-item:last-child { border-bottom: none; }
         .status-correct { color: #16a34a; font-weight: bold; }
         .status-wrong { color: #dc2626; font-weight: bold; }
         .correct-answer-text { color: #2563eb; display: block; margin-top: 4px; font-style: italic; }
     </style>
 </head>
 <body>
+
+<div id="fixed-balance-box">
+    <span>💰</span>
+    <span id="top-token-count">0</span>
+    <span>Token</span>
+</div>
 
 <div class="container">
     <div id="login-section">
@@ -51,7 +75,6 @@
 
     <div id="survey-section">
         <h2 id="welcome-msg"></h2>
-        <div id="balance-display"></div> 
         <div id="survey-container">
             <p>Sorular yükleniyor...</p>
         </div>
@@ -63,6 +86,18 @@
 <script>
     let currentEmail = "";
     let questionsData = [];
+
+    // Bakiyeyi güncelleyen genel fonksiyon
+    function updateTopBalance(newAmount) {
+        const tokenSpan = document.getElementById('top-token-count');
+        const box = document.getElementById('fixed-balance-box');
+        
+        tokenSpan.innerText = newAmount;
+        
+        // Görsel efekt: Bakiye değişince hafifçe büyüsün
+        box.classList.add('balance-bump');
+        setTimeout(() => box.classList.remove('balance-bump'), 300);
+    }
 
     async function handleLogin() {
         const email = document.getElementById('email').value;
@@ -87,7 +122,11 @@
                 document.getElementById('login-section').style.display = 'none';
                 document.getElementById('survey-section').style.display = 'block';
                 document.getElementById('welcome-msg').innerText = `🧠 Başarılar ${email}`;
-                document.getElementById('balance-display').innerText = `💰 Bakiyen: ${data.tokens} Token`;
+                
+                // Sağ üst bakiyeyi göster ve ilk veriyi yaz
+                document.getElementById('fixed-balance-box').style.display = 'flex';
+                updateTopBalance(data.tokens);
+
                 fetchQuestions(); 
             } else {
                 errorDiv.innerText = "Giriş başarısız!";
@@ -141,6 +180,10 @@
 
             const result = await res.json();
             if (result.success) {
+                // --- CANLI BAKİYE GÜNCELLEME (NEW) ---
+                let oldTokens = parseInt(document.getElementById('top-token-count').innerText);
+                updateTopBalance(oldTokens + result.earned_tokens);
+
                 // Analiz Listesini Oluştur
                 let analysisHTML = result.results.map((item, index) => `
                     <div class="analysis-item">
@@ -163,7 +206,7 @@
                             ${analysisHTML}
                         </div>
 
-                        <button onclick="location.reload()" style="background:#22c55e; margin-top:20px;">Bakiyeni Gör ve Tekrarla</button>
+                        <button onclick="location.reload()" style="background:#22c55e; margin-top:20px;">Yeni Yarışmaya Katıl</button>
                     </div>
                 `;
             }
